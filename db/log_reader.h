@@ -25,7 +25,7 @@ class Reader {
     virtual ~Reporter();
 
     // Some corruption was detected.  "bytes" is the approximate number
-    // of bytes dropped due to the corruption.
+    // of bytes dropped due to the corruption. 汇报错误的Reporter
     virtual void Corruption(size_t bytes, const Status& status) = 0;
   };
 
@@ -63,12 +63,16 @@ class Reader {
  private:
   // Extend record types with the following special values
   enum {
-    kEof = kMaxRecordType + 1,
+    kEof = kMaxRecordType + 1,  // 遇到文件结尾
     // Returned whenever we find an invalid physical record.
     // Currently there are three situations in which this happens:
     // * The record has an invalid CRC (ReadPhysicalRecord reports a drop)
     // * The record is a 0-length record (No drop is reported)
     // * The record is below constructor's initial_offset (No drop is reported)
+    // 非法的record，当前有3中情况会返回bad record：
+    // * CRC校验失败 (ReadPhysicalRecord reports adrop)
+    // * 长度为0 (No drop is reported)
+    // * 在指定的initial_offset之外 (No drop is reported)
     kBadRecord = kMaxRecordType + 2
   };
 

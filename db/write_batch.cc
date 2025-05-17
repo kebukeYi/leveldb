@@ -45,6 +45,7 @@ Status WriteBatch::Iterate(Handler* handler) const {
     return Status::Corruption("malformed WriteBatch (too small)");
   }
 
+  // 将 WriteBatch 前 12B 字节移除掉;
   input.remove_prefix(kHeader);
   Slice key, value;
   int found = 0;
@@ -54,8 +55,10 @@ Status WriteBatch::Iterate(Handler* handler) const {
     input.remove_prefix(1);
     switch (tag) {
       case kTypeValue:
-        if (GetLengthPrefixedSlice(&input, &key) &&
-            GetLengthPrefixedSlice(&input, &value)) {
+        //
+        if (GetLengthPrefixedSlice(&input, &key) && GetLengthPrefixedSlice(&input, &value)) {
+          // key: "testkey1"
+          // value: "testvalue1"
           handler->Put(key, value);
         } else {
           return Status::Corruption("bad WriteBatch Put");
@@ -84,6 +87,7 @@ int WriteBatchInternal::Count(const WriteBatch* b) {
 }
 
 void WriteBatchInternal::SetCount(WriteBatch* b, int n) {
+  // 从第 8 个字节开始处,编码4字节进入;
   EncodeFixed32(&b->rep_[8], n);
 }
 
@@ -92,13 +96,15 @@ SequenceNumber WriteBatchInternal::Sequence(const WriteBatch* b) {
 }
 
 void WriteBatchInternal::SetSequence(WriteBatch* b, SequenceNumber seq) {
+  // 前8字节空间是版本号;
   EncodeFixed64(&b->rep_[0], seq);
 }
 
+// 前8B是版本号, 后4字节是当前batch中操作的key的个数;
 void WriteBatch::Put(const Slice& key, const Slice& value) {
   WriteBatchInternal::SetCount(this, WriteBatchInternal::Count(this) + 1);
-  rep_.push_back(static_cast<char>(kTypeValue));
-  PutLengthPrefixedSlice(&rep_, key);
+  rep_.push_back(static_cast<char>(kTypeValue));// 1B
+  PutLengthPrefixedSlice(&rep_,key);
   PutLengthPrefixedSlice(&rep_, value);
 }
 

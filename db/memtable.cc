@@ -73,35 +73,45 @@ class MemTableIterator : public Iterator {
 
 Iterator* MemTable::NewIterator() { return new MemTableIterator(&table_); }
 
-void MemTable::Add(SequenceNumber s, ValueType type, const Slice& key,
-                   const Slice& value) {
+void MemTable::Add(SequenceNumber s, ValueType type, const Slice& key,const Slice& value) {
   // Format of an entry is concatenation of:
   //  key_size     : varint32 of internal_key.size()
   //  key bytes    : char[internal_key.size()]
   //  tag          : uint64((sequence << 8) | type)
   //  value_size   : varint32 of value.size()
   //  value bytes  : char[value.size()]
-  size_t key_size = key.size();
-  size_t val_size = value.size();
+  size_t key_size = key.size();// "testkey1\ntestvalue1"
+  size_t val_size = value.size(); // "testvalue1"
   size_t internal_key_size = key_size + 8;
+  //  1 + 16 + 10 + 1 = 28
   const size_t encoded_len = VarintLength(internal_key_size) +
                              internal_key_size + VarintLength(val_size) +
                              val_size;
+  // 分配了 28B 空间;
   char* buf = arena_.Allocate(encoded_len);
-  char* p = EncodeVarint32(buf, internal_key_size);
+  // |internal_key_size:8+8| key | 8 | val_size | val |
+  char* p = EncodeVarint32(buf, internal_key_size); // 16B
+  // 复制key;
   std::memcpy(p, key.data(), key_size);
+  //
   p += key_size;
+  // 将 seq|type 封装到 p 上;
   EncodeFixed64(p, (s << 8) | type);
   p += 8;
+  // 将 val 封装到 p 上;
   p = EncodeVarint32(p, val_size);
   std::memcpy(p, value.data(), val_size);
   assert(p + val_size == buf + encoded_len);
+  // "\020testkey1\001\001"
   table_.Insert(buf);
 }
 
 bool MemTable::Get(const LookupKey& key, std::string* value, Status* s) {
+  // "\020testkey1\001\223,"
   Slice memkey = key.memtable_key();
+  // SkipList
   Table::Iterator iter(&table_);
+  // seek 到 value>= memkey.data() 的第一个记录
   iter.Seek(memkey.data());
   if (iter.Valid()) {
     // entry format is:
@@ -113,15 +123,18 @@ bool MemTable::Get(const LookupKey& key, std::string* value, Status* s) {
     // Check that it belongs to same user key.  We do not check the
     // sequence number since the Seek() call above should have skipped
     // all entries with overly large sequence numbers.
+    // 这里不需要再检查 sequence number了，因为Seek()已经跳过了所有值更大的sequence number了
     const char* entry = iter.key();
     uint32_t key_length;
+    // key_length:  Internal Key size
     const char* key_ptr = GetVarint32Ptr(entry, entry + 5, &key_length);
-    if (comparator_.comparator.user_comparator()->Compare(
-            Slice(key_ptr, key_length - 8), key.user_key()) == 0) {
+    // 比较 user key 是否相同, key_ptr开始的 len(internal key)-8 的首byte是user key;
+    if (comparator_.comparator.user_comparator()->Compare(Slice(key_ptr, key_length - 8), key.user_key()) == 0) {
       // Correct user key
       const uint64_t tag = DecodeFixed64(key_ptr + key_length - 8);
       switch (static_cast<ValueType>(tag & 0xff)) {
         case kTypeValue: {
+          // 只取出value
           Slice v = GetLengthPrefixedSlice(key_ptr + key_length);
           value->assign(v.data(), v.size());
           return true;

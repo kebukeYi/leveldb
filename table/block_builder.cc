@@ -69,6 +69,7 @@ Slice BlockBuilder::Finish() {
 }
 
 void BlockBuilder::Add(const Slice& key, const Slice& value) {
+  // 上一个 key;
   Slice last_key_piece(last_key_);
   assert(!finished_);
   assert(counter_ <= options_->block_restart_interval);
@@ -82,6 +83,7 @@ void BlockBuilder::Add(const Slice& key, const Slice& value) {
       shared++;
     }
   } else {
+    //
     // Restart compression
     restarts_.push_back(buffer_.size());
     counter_ = 0;
@@ -98,6 +100,7 @@ void BlockBuilder::Add(const Slice& key, const Slice& value) {
   buffer_.append(value.data(), value.size());
 
   // Update state
+  // 重新设置 last_key_
   last_key_.resize(shared);
   last_key_.append(key.data() + shared, non_shared);
   assert(Slice(last_key_) == key);

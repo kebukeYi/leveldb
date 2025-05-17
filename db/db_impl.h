@@ -36,12 +36,10 @@ class DBImpl : public DB {
   ~DBImpl() override;
 
   // Implementations of the DB interface
-  Status Put(const WriteOptions&, const Slice& key,
-             const Slice& value) override;
+  Status Put(const WriteOptions&, const Slice& key, const Slice& value) override;
   Status Delete(const WriteOptions&, const Slice& key) override;
   Status Write(const WriteOptions& options, WriteBatch* updates) override;
-  Status Get(const ReadOptions& options, const Slice& key,
-             std::string* value) override;
+  Status Get(const ReadOptions& options, const Slice& key, std::string* value) override;
   Iterator* NewIterator(const ReadOptions&) override;
   const Snapshot* GetSnapshot() override;
   void ReleaseSnapshot(const Snapshot* snapshot) override;
@@ -156,7 +154,9 @@ class DBImpl : public DB {
   }
 
   // Constant after construction
-  Env* const env_;
+  //== 第一组，他们在构造函数中初始化后将不再改变。
+  // InternalKeyComparator和InternalFilterPolicy已经分别在Memtable和FilterPolicy中分析过
+  Env* const env_; // 环境，封装了系统相关的文件操作、线程等等
   const InternalKeyComparator internal_comparator_;
   const InternalFilterPolicy internal_filter_policy_;
   const Options options_;  // options_.comparator == &internal_comparator_
@@ -164,44 +164,49 @@ class DBImpl : public DB {
   const bool owns_cache_;
   const std::string dbname_;
 
+  //== 第二组，只有两个
   // table_cache_ provides its own synchronization
-  TableCache* const table_cache_;
-
+  TableCache* const table_cache_; // Table cache，线程安全的
   // Lock over the persistent DB state.  Non-null iff successfully acquired.
-  FileLock* db_lock_;
+  FileLock* db_lock_; // 锁db文件，persistent state，直到leveldb进程结束
 
+  //== 第三组，被mutex_包含的状态和成员
   // State below is protected by mutex_
   port::Mutex mutex_;
   std::atomic<bool> shutting_down_;
-  port::CondVar background_work_finished_signal_ GUARDED_BY(mutex_);
+  port::CondVar background_work_finished_signal_ GUARDED_BY(mutex_);  // 在background work结束时激发
   MemTable* mem_;
   MemTable* imm_ GUARDED_BY(mutex_);  // Memtable being compacted
-  std::atomic<bool> has_imm_;         // So bg thread can detect non-null imm_
+  std::atomic<bool> has_imm_;         // So bg thread can detect检测 non-null imm_
+
+  // 这三个是log相关的
   WritableFile* logfile_;
   uint64_t logfile_number_ GUARDED_BY(mutex_);
   log::Writer* log_;
   uint32_t seed_ GUARDED_BY(mutex_);  // For sampling.
 
+  //== 第四组，没有规律
   // Queue of writers.
-  std::deque<Writer*> writers_ GUARDED_BY(mutex_);
+  std::deque<Writer*> writers_ GUARDED_BY(mutex_); // writers队列
   WriteBatch* tmp_batch_ GUARDED_BY(mutex_);
-
-  SnapshotList snapshots_ GUARDED_BY(mutex_);
+  SnapshotList snapshots_ GUARDED_BY(mutex_); //snapshot列表
 
   // Set of table files to protect from deletion because they are
-  // part of ongoing compactions.
+  // part of ongoing compactions.  // 待 compact 的文件列表, 保护以防误删;
   std::set<uint64_t> pending_outputs_ GUARDED_BY(mutex_);
 
   // Has a background compaction been scheduled or is running?
+  // 是否有后台compaction在调度或者运行?
   bool background_compaction_scheduled_ GUARDED_BY(mutex_);
-
+  // 手动compaction信息;
   ManualCompaction* manual_compaction_ GUARDED_BY(mutex_);
-
+  // 多版本DB文件
   VersionSet* const versions_ GUARDED_BY(mutex_);
 
   // Have we encountered a background error in paranoid mode?
+  // paranoid mode下是否有后台错误?
   Status bg_error_ GUARDED_BY(mutex_);
-
+  // compaction状态
   CompactionStats stats_[config::kNumLevels] GUARDED_BY(mutex_);
 };
 

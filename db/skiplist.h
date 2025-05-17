@@ -257,12 +257,12 @@ bool SkipList<Key, Comparator>::KeyIsAfterNode(const Key& key, Node* n) const {
 
 template <typename Key, class Comparator>
 typename SkipList<Key, Comparator>::Node*
-SkipList<Key, Comparator>::FindGreaterOrEqual(const Key& key,
-                                              Node** prev) const {
+SkipList<Key, Comparator>::FindGreaterOrEqual(const Key& key, Node** prev) const {
   Node* x = head_;
   int level = GetMaxHeight() - 1;
   while (true) {
     Node* next = x->Next(level);
+    //
     if (KeyIsAfterNode(key, next)) {
       // Keep searching in this list
       x = next;
@@ -332,7 +332,7 @@ SkipList<Key, Comparator>::SkipList(Comparator cmp, Arena* arena)
 }
 
 template <typename Key, class Comparator>
-void SkipList<Key, Comparator>::Insert(const Key& key) {
+void SkipList<Key, Comparator>::Insert(const Key& key) {// "\020testkey1\001\003"
   // TODO(opt): We can use a barrier-free variant of FindGreaterOrEqual()
   // here since Insert() is externally synchronized.
   Node* prev[kMaxHeight];

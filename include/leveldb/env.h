@@ -48,6 +48,7 @@ class SequentialFile;
 class Slice;
 class WritableFile;
 
+// 纯虚类, 声明了多种文件操作接口;
 class LEVELDB_EXPORT Env {
  public:
   Env();
@@ -116,8 +117,7 @@ class LEVELDB_EXPORT Env {
   // Store in *result the names of the children of the specified directory.
   // The names are relative to "dir".
   // Original contents of *results are dropped.
-  virtual Status GetChildren(const std::string& dir,
-                             std::vector<std::string>* result) = 0;
+  virtual Status GetChildren(const std::string& dir,std::vector<std::string>* result) = 0;
   // Delete the named file.
   //
   // The default implementation calls DeleteFile, to support legacy Env
@@ -400,7 +400,7 @@ class LEVELDB_EXPORT EnvWrapper : public Env {
 
  private:
   Env* target_;
-};
+}; // Env end;
 
 }  // namespace leveldb
 

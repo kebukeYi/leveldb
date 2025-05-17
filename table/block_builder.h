@@ -34,7 +34,7 @@ class BlockBuilder {
   Slice Finish();
 
   // Returns an estimate of the current (uncompressed) size of the block
-  // we are building.
+  // we are building. 当前block的大小;
   size_t CurrentSizeEstimate() const;
 
   // Return true iff no entries have been added since the last Reset()
@@ -46,7 +46,7 @@ class BlockBuilder {
   std::vector<uint32_t> restarts_;  // Restart points
   int counter_;                     // Number of entries emitted since restart
   bool finished_;                   // Has Finish() been called?
-  std::string last_key_;
+  std::string last_key_;            // 记录上一次的key;
 };
 
 }  // namespace leveldb

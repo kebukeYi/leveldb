@@ -65,17 +65,20 @@ class TwoLevelIterator : public Iterator {
   IteratorWrapper data_iter_;  // May be nullptr
   // If data_iter_ is non-null, then "data_block_handle_" holds the
   // "index_value" passed to block_function_ to create the data_iter_.
+  // 如果data_iter_ != NULL，data_block_handle_保存的是传递给
+  // block_function_的index value，以用来创建data_iter_
   std::string data_block_handle_;
 };
 
 TwoLevelIterator::TwoLevelIterator(Iterator* index_iter,
                                    BlockFunction block_function, void* arg,
                                    const ReadOptions& options)
-    : block_function_(block_function),
-      arg_(arg),
-      options_(options),
-      index_iter_(index_iter),
-      data_iter_(nullptr) {}
+    : block_function_(block_function), // block操作函数
+      arg_(arg), // BlockFunction的自定义参数
+      options_(options), // BlockFunction的read option参数
+      index_iter_(index_iter), // 遍历block的迭代器
+      data_iter_(nullptr)// May be NULL-遍历block data的迭代器
+{}
 
 TwoLevelIterator::~TwoLevelIterator() = default;
 
@@ -165,6 +168,7 @@ void TwoLevelIterator::InitDataBlock() {
 Iterator* NewTwoLevelIterator(Iterator* index_iter,
                               BlockFunction block_function, void* arg,
                               const ReadOptions& options) {
+  //
   return new TwoLevelIterator(index_iter, block_function, arg, options);
 }
 

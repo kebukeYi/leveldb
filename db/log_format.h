@@ -24,9 +24,11 @@ enum RecordType {
 };
 static const int kMaxRecordType = kLastType;
 
+// 固定 32KB
 static const int kBlockSize = 32768;
 
 // Header is checksum (4 bytes), length (2 bytes), type (1 byte).
+// 最少需要 7B
 static const int kHeaderSize = 4 + 2 + 1;
 
 }  // namespace log

@@ -144,8 +144,10 @@ bool GetVarint64(Slice* input, uint64_t* value) {
 
 bool GetLengthPrefixedSlice(Slice* input, Slice* result) {
   uint32_t len;
+  //
   if (GetVarint32(input, &len) && input->size() >= len) {
     *result = Slice(input->data(), len);
+    // 取出 key
     input->remove_prefix(len);
     return true;
   } else {

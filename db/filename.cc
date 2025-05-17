@@ -43,8 +43,7 @@ std::string SSTTableFileName(const std::string& dbname, uint64_t number) {
 std::string DescriptorFileName(const std::string& dbname, uint64_t number) {
   assert(number > 0);
   char buf[100];
-  std::snprintf(buf, sizeof(buf), "/MANIFEST-%06llu",
-                static_cast<unsigned long long>(number));
+  std::snprintf(buf, sizeof(buf), "/MANIFEST-%06llu", static_cast<unsigned long long>(number));
   return dbname + buf;
 }
 
@@ -75,8 +74,7 @@ std::string OldInfoLogFileName(const std::string& dbname) {
 //    dbname/LOG.old
 //    dbname/MANIFEST-[0-9]+
 //    dbname/[0-9]+.(log|sst|ldb)
-bool ParseFileName(const std::string& filename, uint64_t* number,
-                   FileType* type) {
+bool ParseFileName(const std::string& filename, uint64_t* number,FileType* type) {
   Slice rest(filename);
   if (rest == "CURRENT") {
     *number = 0;
@@ -120,8 +118,7 @@ bool ParseFileName(const std::string& filename, uint64_t* number,
   return true;
 }
 
-Status SetCurrentFile(Env* env, const std::string& dbname,
-                      uint64_t descriptor_number) {
+Status SetCurrentFile(Env* env, const std::string& dbname, uint64_t descriptor_number) {
   // Remove leading "dbname/" and add newline to manifest file name
   std::string manifest = DescriptorFileName(dbname, descriptor_number);
   Slice contents = manifest;

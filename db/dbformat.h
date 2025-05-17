@@ -163,20 +163,21 @@ class InternalKey {
   std::string DebugString() const;
 };
 
-inline int InternalKeyComparator::Compare(const InternalKey& a,
-                                          const InternalKey& b) const {
+inline int InternalKeyComparator::Compare(const InternalKey& a, const InternalKey& b) const {
   return Compare(a.Encode(), b.Encode());
 }
 
-inline bool ParseInternalKey(const Slice& internal_key,
-                             ParsedInternalKey* result) {
-  const size_t n = internal_key.size();
+inline bool ParseInternalKey(const Slice& internal_key, ParsedInternalKey* result) {
+  const size_t n = internal_key.size(); // | key | seq type |
   if (n < 8) return false;
+  // seq,type, 8字节;
   uint64_t num = DecodeFixed64(internal_key.data() + n - 8);
   uint8_t c = num & 0xff;
   result->sequence = num >> 8;
   result->type = static_cast<ValueType>(c);
+  // key
   result->user_key = Slice(internal_key.data(), n - 8);
+  // 判断 type 是否合规;
   return (c <= static_cast<uint8_t>(kTypeValue));
 }
 
@@ -192,13 +193,19 @@ class LookupKey {
 
   ~LookupKey();
 
+  // start_   kstart_                     end
+  // [6+8=14 | key(6B) | ((seq << 8)|t) 8B ]
+
   // Return a key suitable for lookup in a MemTable.
+  // [6+8=14 | key(6B) | ((seq << 8)|t) 8B ]
   Slice memtable_key() const { return Slice(start_, end_ - start_); }
 
   // Return an internal key (suitable for passing to an internal iterator)
+  // [ key(6B) | ((seq << 8)|t) 8B ]
   Slice internal_key() const { return Slice(kstart_, end_ - kstart_); }
 
   // Return the user key
+  // [ key(6B) ]
   Slice user_key() const { return Slice(kstart_, end_ - kstart_ - 8); }
 
  private:

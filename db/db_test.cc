@@ -4,25 +4,27 @@
 
 #include "leveldb/db.h"
 
-#include <atomic>
-#include <cinttypes>
-#include <string>
-
-#include "gtest/gtest.h"
 #include "db/db_impl.h"
 #include "db/filename.h"
 #include "db/version_set.h"
 #include "db/write_batch_internal.h"
+#include <atomic>
+#include <cinttypes>
+#include <string>
+
 #include "leveldb/cache.h"
 #include "leveldb/env.h"
 #include "leveldb/filter_policy.h"
 #include "leveldb/table.h"
+
 #include "port/port.h"
 #include "port/thread_annotations.h"
 #include "util/hash.h"
 #include "util/logging.h"
 #include "util/mutexlock.h"
 #include "util/testutil.h"
+
+#include "gtest/gtest.h"
 
 namespace leveldb {
 
@@ -33,8 +35,7 @@ static std::string RandomString(Random* rnd, int len) {
 }
 
 static std::string RandomKey(Random* rnd) {
-  int len =
-      (rnd->OneIn(3) ? 1  // Short sometimes to encourage collisions
+  int len =(rnd->OneIn(3) ? 1  // Short sometimes to encourage collisions
                      : (rnd->OneIn(100) ? rnd->Skewed(10) : rnd->Uniform(10)));
   return test::RandomKey(rnd, len);
 }
@@ -292,18 +293,23 @@ class DBTest : public testing::Test {
     }
   }
 
+  // todo 打开默认配置;
   // Return the current option configuration.
   Options CurrentOptions() {
     Options options;
+    // 是否复用 log 模块;包括 maniFest 和 wal 文件;
     options.reuse_logs = false;
+    // 是否打开 参数配置化;
     switch (option_config_) {
       case kReuse:
         options.reuse_logs = true;
         break;
       case kFilter:
+        // 过滤器 配置化;
         options.filter_policy = filter_policy_;
         break;
       case kUncompressed:
+        // 未打开压缩;
         options.compression = kNoCompression;
         break;
       default:
@@ -337,15 +343,17 @@ class DBTest : public testing::Test {
     if (options != nullptr) {
       opts = *options;
     } else {
+      //
       opts = CurrentOptions();
       opts.create_if_missing = true;
     }
     last_options_ = opts;
-
-    return DB::Open(opts, dbname_, &db_);
+    Status status = DB::Open(opts, dbname_, &db_);
+    return status;
   }
 
   Status Put(const std::string& k, const std::string& v) {
+    // 1. db.put(), sync = false;
     return db_->Put(WriteOptions(), k, v);
   }
 

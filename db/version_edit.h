@@ -19,6 +19,9 @@ struct FileMetaData {
   FileMetaData() : refs(0), allowed_seeks(1 << 30), file_size(0) {}
 
   int refs;
+  // 会为每一个新的 sstable 文件维护一个 allowed_seek 的初始阈值，
+  // 表示最多容忍多少次 seek miss，当 allowed_seeks 递减到小于 0 了，
+  // 那么会将对应的文件标记为需要 compact
   int allowed_seeks;  // Seeks allowed until compaction
   uint64_t number;
   uint64_t file_size;    // File size in bytes
@@ -85,20 +88,20 @@ class VersionEdit {
 
   typedef std::set<std::pair<int, uint64_t>> DeletedFileSet;
 
-  std::string comparator_;
-  uint64_t log_number_;
-  uint64_t prev_log_number_;
-  uint64_t next_file_number_;
-  SequenceNumber last_sequence_;
-  bool has_comparator_;
-  bool has_log_number_;
-  bool has_prev_log_number_;
-  bool has_next_file_number_;
-  bool has_last_sequence_;
+  std::string comparator_;  // key comparator名字
+  uint64_t log_number_; // 日志编号
+  uint64_t prev_log_number_;// 前一个日志编号
+  uint64_t next_file_number_;// 下一个文件编号
+  SequenceNumber last_sequence_;// 上一个seq
+  bool has_comparator_;// 是否有comparator
+  bool has_log_number_;// 是否有log_number_
+  bool has_prev_log_number_;// 是否有prev_log_number_
+  bool has_next_file_number_;// 是否有next_file_number_
+  bool has_last_sequence_;// 是否有last_sequence_
 
-  std::vector<std::pair<int, InternalKey>> compact_pointers_;
-  DeletedFileSet deleted_files_;
-  std::vector<std::pair<int, FileMetaData>> new_files_;
+  std::vector<std::pair<int, InternalKey>> compact_pointers_; // 每次合并涉及到的 最大key;
+  DeletedFileSet deleted_files_; // 删除文件集合
+  std::vector<std::pair<int, FileMetaData>> new_files_; // 新文件集合
 };
 
 }  // namespace leveldb

@@ -9,6 +9,7 @@
 
 namespace leveldb {
 
+// todo 空Env(); 实现;
 Options::Options() : comparator(BytewiseComparator()), env(Env::Default()) {}
 
 }  // namespace leveldb

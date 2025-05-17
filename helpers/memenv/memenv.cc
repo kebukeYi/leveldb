@@ -188,8 +188,8 @@ class RandomAccessFileImpl : public RandomAccessFile {
 
   ~RandomAccessFileImpl() override { file_->Unref(); }
 
-  Status Read(uint64_t offset, size_t n, Slice* result,
-              char* scratch) const override {
+  Status Read(uint64_t offset, size_t n, Slice* result,char* scratch) const override {
+    //
     return file_->Read(offset, n, result, scratch);
   }
 
@@ -229,8 +229,7 @@ class InMemoryEnv : public EnvWrapper {
   }
 
   // Partial implementation of the Env interface.
-  Status NewSequentialFile(const std::string& fname,
-                           SequentialFile** result) override {
+  Status NewSequentialFile(const std::string& fname, SequentialFile** result) override {
     MutexLock lock(&mutex_);
     if (file_map_.find(fname) == file_map_.end()) {
       *result = nullptr;

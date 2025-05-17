@@ -60,6 +60,7 @@ class LEVELDB_EXPORT Table {
 
  private:
   friend class TableCache;
+  //
   struct Rep;
 
   static Iterator* BlockReader(void*, const ReadOptions&, const Slice&);
@@ -76,6 +77,7 @@ class LEVELDB_EXPORT Table {
   void ReadMeta(const Footer& footer);
   void ReadFilter(const Slice& filter_handle_value);
 
+  //
   Rep* const rep_;
 };
 

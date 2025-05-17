@@ -21,6 +21,7 @@ class LEVELDB_EXPORT Comparator {
  public:
   virtual ~Comparator();
 
+  // 纯虚函数,
   // Three-way comparison.  Returns value:
   //   < 0 iff "a" < "b",
   //   == 0 iff "a" == "b",
@@ -42,12 +43,13 @@ class LEVELDB_EXPORT Comparator {
   // Advanced functions: these are used to reduce the space requirements
   // for internal data structures like index blocks.
 
+  // 根据分隔符进行分割;
   // If *start < limit, changes *start to a short string in [start,limit).
   // Simple comparator implementations may return with *start unchanged,
   // i.e., an implementation of this method that does nothing is correct.
-  virtual void FindShortestSeparator(std::string* start,
-                                     const Slice& limit) const = 0;
+  virtual void FindShortestSeparator(std::string* start, const Slice& limit) const = 0;
 
+  // 找到当前key的后继;
   // Changes *key to a short string >= *key.
   // Simple comparator implementations may return with *key unchanged,
   // i.e., an implementation of this method that does nothing is correct.

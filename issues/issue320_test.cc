@@ -44,8 +44,7 @@ TEST(Issue320, Test) {
   bool delete_before_put = false;
   bool keep_snapshots = true;
 
-  std::vector<std::unique_ptr<std::pair<std::string, std::string>>> test_map(
-      10000);
+  std::vector<std::unique_ptr<std::pair<std::string, std::string>>> test_map(10000);
   std::vector<Snapshot const*> snapshots(100, nullptr);
 
   DB* db;

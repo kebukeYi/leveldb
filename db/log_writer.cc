@@ -32,6 +32,7 @@ Writer::Writer(WritableFile* dest, uint64_t dest_length)
 Writer::~Writer() = default;
 
 Status Writer::AddRecord(const Slice& slice) {
+  //
   const char* ptr = slice.data();
   size_t left = slice.size();
 
@@ -56,7 +57,9 @@ Status Writer::AddRecord(const Slice& slice) {
     // Invariant: we never leave < kHeaderSize bytes in a block.
     assert(kBlockSize - block_offset_ - kHeaderSize >= 0);
 
+    // block剩余大小
     const size_t avail = kBlockSize - block_offset_ - kHeaderSize;
+    // 本次log record可写入数据长度; 放得下 left 不变; 否则 left 变为 avail;
     const size_t fragment_length = (left < avail) ? left : avail;
 
     RecordType type;
@@ -71,6 +74,7 @@ Status Writer::AddRecord(const Slice& slice) {
       type = kMiddleType;
     }
 
+    // append日志；并更新指针、剩余长度和begin标记
     s = EmitPhysicalRecord(type, ptr, fragment_length);
     ptr += fragment_length;
     left -= fragment_length;
@@ -79,25 +83,27 @@ Status Writer::AddRecord(const Slice& slice) {
   return s;
 }
 
-Status Writer::EmitPhysicalRecord(RecordType t, const char* ptr,
-                                  size_t length) {
+Status Writer::EmitPhysicalRecord(RecordType t, const char* ptr, size_t length) {
   assert(length <= 0xffff);  // Must fit in two bytes
   assert(block_offset_ + kHeaderSize + length <= kBlockSize);
 
-  // Format the header
+  // Format the header;
   char buf[kHeaderSize];
   buf[4] = static_cast<char>(length & 0xff);
   buf[5] = static_cast<char>(length >> 8);
   buf[6] = static_cast<char>(t);
 
+  // 计算record type和payload的CRC校验值
   // Compute the crc of the record type and the payload.
   uint32_t crc = crc32c::Extend(type_crc_[t], ptr, length);
-  crc = crc32c::Mask(crc);  // Adjust for storage
+  crc = crc32c::Mask(crc);  // Adjust for storage 空间调整
   EncodeFixed32(buf, crc);
 
   // Write the header and the payload
+  // 写入payload，并Flush，更新block的当前偏移
   Status s = dest_->Append(Slice(buf, kHeaderSize));
   if (s.ok()) {
+    //
     s = dest_->Append(Slice(ptr, length));
     if (s.ok()) {
       s = dest_->Flush();

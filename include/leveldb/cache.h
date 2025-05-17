@@ -33,8 +33,10 @@ LEVELDB_EXPORT Cache* NewLRUCache(size_t capacity);
 
 class LEVELDB_EXPORT Cache {
  public:
+
   Cache() = default;
 
+  // 无法直接被复制;
   Cache(const Cache&) = delete;
   Cache& operator=(const Cache&) = delete;
 
@@ -42,6 +44,7 @@ class LEVELDB_EXPORT Cache {
   // function that was passed to the constructor.
   virtual ~Cache();
 
+  // 没有使用模板, 但是想实现多态, 使用此处的结构体来作为中介;
   // Opaque handle to an entry stored in the cache.
   struct Handle {};
 

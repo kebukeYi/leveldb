@@ -10,6 +10,7 @@
 #include "leveldb/env.h"
 #include "leveldb/filter_policy.h"
 #include "leveldb/options.h"
+
 #include "table/block_builder.h"
 #include "table/filter_block.h"
 #include "table/format.h"
@@ -35,31 +36,34 @@ struct TableBuilder::Rep {
     index_block_options.block_restart_interval = 1;
   }
 
-  Options options;
-  Options index_block_options;
-  WritableFile* file;
-  uint64_t offset;
-  Status status;
-  BlockBuilder data_block;
-  BlockBuilder index_block;
-  std::string last_key;
-  int64_t num_entries;
-  bool closed;  // Either Finish() or Abandon() has been called.
-  FilterBlockBuilder* filter_block;
+  Options options;              // data block的选项
+  Options index_block_options;  // index block的选项
+  WritableFile* file;           // sstable 文件
+  uint64_t offset;  // 要写入data block在sstable文件中的偏移，初始0
+  Status status;    // 当前状态-初始ok
+  BlockBuilder data_block;   // 当前操作的data block
+  BlockBuilder index_block;  // sstable的index block
+  std::string last_key;      // 当前data block最后的k/v对的key
+  int64_t num_entries;       // 当前data block的个数，初始0
+  bool closed;               // Either Finish() or Abandon() has been called.
+                             // //调用了Finish() or Abandon()，初始false
+  FilterBlockBuilder* filter_block;  // 根据filter数据快速定位key是否在block中
 
   // We do not emit the index entry for a block until we have seen the
   // first key for the next data block.  This allows us to use shorter
   // keys in the index block.  For example, consider a block boundary
   // between the keys "the quick brown fox" and "the who".  We can use
   // "the r" as the key for the index block entry since it is >= all
-  // entries in the first block and < all entries in subsequent
-  // blocks.
+  // entries in the first block and < all entries in subsequent blocks.
   //
   // Invariant: r->pending_index_entry is true only if data_block is empty.
-  bool pending_index_entry;
-  BlockHandle pending_handle;  // Handle to add to index block
+  bool pending_index_entry;    // 是否写入 index_block 数据;
+                               // 达到一定阈值后,才会写入;
+  BlockHandle pending_handle;  // Handle to add to index block //添加到index
+                               // block的data block的信息
 
-  std::string compressed_output;
+  std::string compressed_output;  // 压缩后的data
+                                  // block，临时存储，写入后即被清空
 };
 
 TableBuilder::TableBuilder(const Options& options, WritableFile* file)
@@ -98,43 +102,66 @@ void TableBuilder::Add(const Slice& key, const Slice& value) {
   if (r->num_entries > 0) {
     assert(r->options.comparator->Compare(key, Slice(r->last_key)) > 0);
   }
-
+  // 如果标记r->pending_index_entry为true, 表明遇到了 下一个data
+  // block的第一个kv;
   if (r->pending_index_entry) {
     assert(r->data_block.empty());
+    // 寻找一个 大于等于当前block的最大key && 小于下一个 block最小key的key,
+    // 来当上一个block的索引, 进一步缩短空间;
     r->options.comparator->FindShortestSeparator(&r->last_key, key);
     std::string handle_encoding;
     r->pending_handle.EncodeTo(&handle_encoding);
+    // 直到遇到下一个databock的第一个key时，我们才为上一个datablock生成index
+    // entry， 这样的好处是：可以为index使用较短的key；比如上一个data
+    // block最后一个k/v的key是"the quick brown fox"， 其后继data
+    // block的第一个key是"the who"，我们就可以用一个较短的字符串"the
+    // r"作为上一个data block的 index block entry的key;
     r->index_block.Add(r->last_key, Slice(handle_encoding));
     r->pending_index_entry = false;
   }
 
+  // 每一个 key 都进行填入过滤器中;
   if (r->filter_block != nullptr) {
+    // 添加到 过滤器中;
     r->filter_block->AddKey(key);
   }
 
+  // 设置r->last_key = key，将(key, value)添加到r->data_block中，并更新entry数;
   r->last_key.assign(key.data(), key.size());
-  r->num_entries++;
+  r->num_entries++;  // kv对增加
+  // block 进行 Add();
   r->data_block.Add(key, value);
 
+  // 如果data block的个数超过限制，就立刻Flush到文件中
   const size_t estimated_block_size = r->data_block.CurrentSizeEstimate();
   if (estimated_block_size >= r->options.block_size) {
+    // 会开启新的的 过滤器;
     Flush();
   }
 }
 
 void TableBuilder::Flush() {
-  Rep* r = rep_;
-  assert(!r->closed);
+  Rep* r = rep_;       // 所有数据;
+  assert(!r->closed);  // 首先保证未关闭，且状态ok;
   if (!ok()) return;
   if (r->data_block.empty()) return;
+  // 保证pending_index_entry为false，即data block的Add已经完成;
   assert(!r->pending_index_entry);
+  // 写入 data block, 并设置其index entry信息 BlockHandle对象;
   WriteBlock(&r->data_block, &r->pending_handle);
+
+  // 写入成功，则Flush文件，并设置r->pending_index_entry为true,
+  // 以根据下一个data block的first key调整index entry的key—即r->last_key
   if (ok()) {
     r->pending_index_entry = true;
     r->status = r->file->Flush();
   }
+
+  // 开启新的 过滤器 block;
   if (r->filter_block != nullptr) {
+    // 将 data block 在 sstable 中的便宜加入到 filter block 中;
     r->filter_block->StartBlock(r->offset);
+    // 并指明开始新的 data block;
   }
 }
 
@@ -145,6 +172,7 @@ void TableBuilder::WriteBlock(BlockBuilder* block, BlockHandle* handle) {
   //    crc: uint32
   assert(ok());
   Rep* r = rep_;
+  // 获得data block的序列化字符串
   Slice raw = block->Finish();
 
   Slice block_contents;
@@ -156,13 +184,15 @@ void TableBuilder::WriteBlock(BlockBuilder* block, BlockHandle* handle) {
       break;
 
     case kSnappyCompression: {
+      // snappy压缩格式
       std::string* compressed = &r->compressed_output;
       if (port::Snappy_Compress(raw.data(), raw.size(), compressed) &&
           compressed->size() < raw.size() - (raw.size() / 8u)) {
         block_contents = *compressed;
       } else {
-        // Snappy not supported, or compressed less than 12.5%, so just
-        // store uncompressed form
+        // Snappy not supported, or compressed less than 12.5%, so just store
+        // uncompressed form
+        // 如果不支持Snappy，或者压缩率低于12.5%，依然当作不压缩存储
         block_contents = raw;
         type = kNoCompression;
       }
@@ -184,6 +214,7 @@ void TableBuilder::WriteBlock(BlockBuilder* block, BlockHandle* handle) {
       break;
     }
   }
+  // 将data内容写入到文件, 并重置block成初始化状态，清空 compressed out put
   WriteRawBlock(block_contents, type, handle);
   r->compressed_output.clear();
   block->Reset();
@@ -193,16 +224,20 @@ void TableBuilder::WriteRawBlock(const Slice& block_contents,
                                  CompressionType type, BlockHandle* handle) {
   Rep* r = rep_;
   handle->set_offset(r->offset);
+  // 为index设置data block的handle信息
   handle->set_size(block_contents.size());
+  // 写入data block内容
   r->status = r->file->Append(block_contents);
   if (r->status.ok()) {
     char trailer[kBlockTrailerSize];
+    // 写入1byte的type和4bytes的crc32
     trailer[0] = type;
     uint32_t crc = crc32c::Value(block_contents.data(), block_contents.size());
     crc = crc32c::Extend(crc, trailer, 1);  // Extend crc to cover block type
     EncodeFixed32(trailer + 1, crc32c::Mask(crc));
     r->status = r->file->Append(Slice(trailer, kBlockTrailerSize));
     if (r->status.ok()) {
+      // 写入成功更新offset-下一个data block的写入偏移
       r->offset += block_contents.size() + kBlockTrailerSize;
     }
   }
@@ -212,6 +247,8 @@ Status TableBuilder::status() const { return rep_->status; }
 
 Status TableBuilder::Finish() {
   Rep* r = rep_;
+  // 首先调用Flush，写入最后的一块data
+  // block，然后设置关闭标志closed=true。表明该sstable已经关闭，不能再添加k/v对
   Flush();
   assert(!r->closed);
   r->closed = true;
@@ -220,11 +257,14 @@ Status TableBuilder::Finish() {
 
   // Write filter block
   if (ok() && r->filter_block != nullptr) {
+    // 写入filter block到文件中
     WriteRawBlock(r->filter_block->Finish(), kNoCompression,
                   &filter_block_handle);
   }
 
   // Write metaindex block
+  // 如果filterblock不为NULL，则加入从"filter.Name"到filter data位置的映射。
+  // 通过meta index block，可以根据filter名字快速定位到filter的数据区
   if (ok()) {
     BlockBuilder meta_index_block(&r->options);
     if (r->filter_block != nullptr) {
@@ -241,6 +281,8 @@ Status TableBuilder::Finish() {
   }
 
   // Write index block
+  // 写入index block，如果成功Flush过data block，那么需要为最后一块data
+  // block设置index block， 并加入到index block中。
   if (ok()) {
     if (r->pending_index_entry) {
       r->options.comparator->FindShortSuccessor(&r->last_key);

@@ -15,25 +15,25 @@ namespace log {
 
 Reader::Reporter::~Reporter() = default;
 
-Reader::Reader(SequentialFile* file, Reporter* reporter, bool checksum,
-               uint64_t initial_offset)
+Reader::Reader(SequentialFile* file, Reporter* reporter, bool checksum,uint64_t initial_offset)
     : file_(file),
       reporter_(reporter),
       checksum_(checksum),
       backing_store_(new char[kBlockSize]),
-      buffer_(),
-      eof_(false),
-      last_record_offset_(0),
-      end_of_buffer_offset_(0),
-      initial_offset_(initial_offset),
+      buffer_(), // 读取的内容
+      eof_(false), // 上次Read()返回长度 < kBlockSize，暗示到了文件结尾EOF
+      last_record_offset_(0), // 函数ReadRecord返回的上一个record的偏移
+      end_of_buffer_offset_(0), // 当前的读取偏移
+      initial_offset_(initial_offset), // 偏移, 从哪里开始读取第一条record
       resyncing_(initial_offset > 0) {}
 
 Reader::~Reader() { delete[] backing_store_; }
 
 bool Reader::SkipToInitialBlock() {
+  // 计算在block内的偏移位置，并圆整到开始读取block的起始位置
   const size_t offset_in_block = initial_offset_ % kBlockSize;
   uint64_t block_start_location = initial_offset_ - offset_in_block;
-
+  // 如果偏移在最后的6byte里，肯定不是一条完整的记录，跳到下一个block
   // Don't search a block if we'd be in the trailer
   if (offset_in_block > kBlockSize - 6) {
     block_start_location += kBlockSize;
@@ -41,6 +41,7 @@ bool Reader::SkipToInitialBlock() {
 
   end_of_buffer_offset_ = block_start_location;
 
+  // 设置读取偏移
   // Skip to start of first block that can contain the initial record
   if (block_start_location > 0) {
     Status skip_status = file_->Skip(block_start_location);
@@ -54,7 +55,9 @@ bool Reader::SkipToInitialBlock() {
 }
 
 bool Reader::ReadRecord(Slice* record, std::string* scratch) {
+  // 当前偏移 < 指定的初始偏移，需要Seek
   if (last_record_offset_ < initial_offset_) {
+    // 调整和跳转逻辑
     if (!SkipToInitialBlock()) {
       return false;
     }
@@ -62,20 +65,23 @@ bool Reader::ReadRecord(Slice* record, std::string* scratch) {
 
   scratch->clear();
   record->clear();
+  // 当前是否在 fragment 内, 也就是遇到了 FIRST 类型的 record
   bool in_fragmented_record = false;
   // Record offset of the logical record that we're reading
   // 0 is a dummy value to make compilers happy
+  // 我们正在读取的逻辑record的偏移
   uint64_t prospective_record_offset = 0;
 
   Slice fragment;
   while (true) {
+    // 读取出现错误时，并不会退出循环，而是汇报错误，继续执行，直到成功读取一条user record，或者遇到文件结尾
     const unsigned int record_type = ReadPhysicalRecord(&fragment);
 
     // ReadPhysicalRecord may have only had an empty trailer remaining in its
     // internal buffer. Calculate the offset of the next physical record now
     // that it has returned, properly accounting for its header size.
-    uint64_t physical_record_offset =
-        end_of_buffer_offset_ - buffer_.size() - kHeaderSize - fragment.size();
+    // 存储的是当前正在读取的record的偏移值
+    uint64_t physical_record_offset = end_of_buffer_offset_ - buffer_.size() - kHeaderSize - fragment.size();
 
     if (resyncing_) {
       if (record_type == kMiddleType) {
@@ -100,9 +106,9 @@ bool Reader::ReadRecord(Slice* record, std::string* scratch) {
           }
         }
         prospective_record_offset = physical_record_offset;
-        scratch->clear();
+        scratch->clear();// 清空scratch，读取成功不需要返回scratch数据
         *record = fragment;
-        last_record_offset_ = prospective_record_offset;
+        last_record_offset_ = prospective_record_offset; // 更新last record offset
         return true;
 
       case kFirstType:
@@ -122,8 +128,7 @@ bool Reader::ReadRecord(Slice* record, std::string* scratch) {
 
       case kMiddleType:
         if (!in_fragmented_record) {
-          ReportCorruption(fragment.size(),
-                           "missing start of fragmented record(1)");
+          ReportCorruption(fragment.size(), "missing start of fragmented record(1)");
         } else {
           scratch->append(fragment.data(), fragment.size());
         }
@@ -131,8 +136,7 @@ bool Reader::ReadRecord(Slice* record, std::string* scratch) {
 
       case kLastType:
         if (!in_fragmented_record) {
-          ReportCorruption(fragment.size(),
-                           "missing start of fragmented record(2)");
+          ReportCorruption(fragment.size(), "missing start of fragmented record(2)");
         } else {
           scratch->append(fragment.data(), fragment.size());
           *record = Slice(*scratch);
@@ -162,8 +166,7 @@ bool Reader::ReadRecord(Slice* record, std::string* scratch) {
         char buf[40];
         std::snprintf(buf, sizeof(buf), "unknown record type %u", record_type);
         ReportCorruption(
-            (fragment.size() + (in_fragmented_record ? scratch->size() : 0)),
-            buf);
+            (fragment.size() + (in_fragmented_record ? scratch->size() : 0)),buf);
         in_fragmented_record = false;
         scratch->clear();
         break;
@@ -187,19 +190,23 @@ void Reader::ReportDrop(uint64_t bytes, const Status& reason) {
 }
 
 unsigned int Reader::ReadPhysicalRecord(Slice* result) {
-  while (true) {
-    if (buffer_.size() < kHeaderSize) {
-      if (!eof_) {
+  // 读取出现错误时，并不会退出循环，而是汇报错误，继续执行，直到成功读取一条user record，或者遇到文件结尾
+  while (true) { // 其目的是为了读取到一个完整的record, 故可能读取到多个block;
+    if (buffer_.size() < kHeaderSize) { // 没有数据,可继续读取;
+      if (!eof_) {// 没有到达文件末尾;
         // Last read was a full read, so this is a trailer to skip
         buffer_.clear();
+        // 因为上次肯定读取了一个完整的record
         Status status = file_->Read(kBlockSize, &buffer_, backing_store_);
         end_of_buffer_offset_ += buffer_.size();
         if (!status.ok()) {
+          // 读取失败，设置eof_为true，报告错误并返回kEof
           buffer_.clear();
           ReportDrop(kBlockSize, status);
           eof_ = true;
           return kEof;
         } else if (buffer_.size() < kBlockSize) {
+          // 实际读取字节<指定(Block Size)，表明到了文件结尾
           eof_ = true;
         }
         continue;
@@ -220,6 +227,7 @@ unsigned int Reader::ReadPhysicalRecord(Slice* result) {
     const unsigned int type = header[6];
     const uint32_t length = a | (b << 8);
     if (kHeaderSize + length > buffer_.size()) {
+      // 长度超出了, 汇报错误;
       size_t drop_size = buffer_.size();
       buffer_.clear();
       if (!eof_) {
@@ -236,6 +244,7 @@ unsigned int Reader::ReadPhysicalRecord(Slice* result) {
       // Skip zero length record without reporting any drops since
       // such records are produced by the mmap based writing code in
       // env_posix.cc that preallocates file regions.
+      // 对于Zero Type类型, 不汇报错误;
       buffer_.clear();
       return kBadRecord;
     }
@@ -259,8 +268,8 @@ unsigned int Reader::ReadPhysicalRecord(Slice* result) {
     buffer_.remove_prefix(kHeaderSize + length);
 
     // Skip physical record that started before initial_offset_
-    if (end_of_buffer_offset_ - buffer_.size() - kHeaderSize - length <
-        initial_offset_) {
+    // 如果record的开始位置在initial offset之前，则跳过，并返回kBadRecord，否则返回record数据和type;
+    if (end_of_buffer_offset_ - buffer_.size() - kHeaderSize - length < initial_offset_) {
       result->clear();
       return kBadRecord;
     }

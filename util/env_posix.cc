@@ -135,8 +135,7 @@ class Limiter {
 // by the SequentialFile API.
 class PosixSequentialFile final : public SequentialFile {
  public:
-  PosixSequentialFile(std::string filename, int fd)
-      : fd_(fd), filename_(std::move(filename)) {}
+  PosixSequentialFile(std::string filename, int fd): fd_(fd), filename_(std::move(filename)) {}
   ~PosixSequentialFile() override { close(fd_); }
 
   Status Read(size_t n, Slice* result, char* scratch) override {
@@ -454,6 +453,7 @@ class PosixWritableFile final : public WritableFile {
     return Basename(filename).starts_with("MANIFEST");
   }
 
+  // 缓冲区;
   // buf_[0, pos_ - 1] contains data to be written to fd_.
   char buf_[kWritableFileBufferSize];
   size_t pos_;
@@ -519,14 +519,12 @@ class PosixEnv : public Env {
  public:
   PosixEnv();
   ~PosixEnv() override {
-    static const char msg[] =
-        "PosixEnv singleton destroyed. Unsupported behavior!\n";
+    static const char msg[] = "PosixEnv singleton destroyed. Unsupported behavior!\n";
     std::fwrite(msg, 1, sizeof(msg), stderr);
     std::abort();
   }
 
-  Status NewSequentialFile(const std::string& filename,
-                           SequentialFile** result) override {
+  Status NewSequentialFile(const std::string& filename,SequentialFile** result) override {
     int fd = ::open(filename.c_str(), O_RDONLY | kOpenBaseFlags);
     if (fd < 0) {
       *result = nullptr;
@@ -537,8 +535,7 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  Status NewRandomAccessFile(const std::string& filename,
-                             RandomAccessFile** result) override {
+  Status NewRandomAccessFile(const std::string& filename, RandomAccessFile** result) override {
     *result = nullptr;
     int fd = ::open(filename.c_str(), O_RDONLY | kOpenBaseFlags);
     if (fd < 0) {
@@ -570,10 +567,9 @@ class PosixEnv : public Env {
     return status;
   }
 
-  Status NewWritableFile(const std::string& filename,
-                         WritableFile** result) override {
-    int fd = ::open(filename.c_str(),
-                    O_TRUNC | O_WRONLY | O_CREAT | kOpenBaseFlags, 0644);
+  Status NewWritableFile(const std::string& filename,WritableFile** result) override {
+    //
+    int fd = ::open(filename.c_str(),O_TRUNC | O_WRONLY | O_CREAT | kOpenBaseFlags, 0644);
     if (fd < 0) {
       *result = nullptr;
       return PosixError(filename, errno);
@@ -583,10 +579,8 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  Status NewAppendableFile(const std::string& filename,
-                           WritableFile** result) override {
-    int fd = ::open(filename.c_str(),
-                    O_APPEND | O_WRONLY | O_CREAT | kOpenBaseFlags, 0644);
+  Status NewAppendableFile(const std::string& filename,WritableFile** result) override {
+    int fd = ::open(filename.c_str(),O_APPEND | O_WRONLY | O_CREAT | kOpenBaseFlags, 0644);
     if (fd < 0) {
       *result = nullptr;
       return PosixError(filename, errno);
@@ -600,8 +594,7 @@ class PosixEnv : public Env {
     return ::access(filename.c_str(), F_OK) == 0;
   }
 
-  Status GetChildren(const std::string& directory_path,
-                     std::vector<std::string>* result) override {
+  Status GetChildren(const std::string& directory_path,std::vector<std::string>* result) override {
     result->clear();
     ::DIR* dir = ::opendir(directory_path.c_str());
     if (dir == nullptr) {
@@ -623,6 +616,7 @@ class PosixEnv : public Env {
   }
 
   Status CreateDir(const std::string& dirname) override {
+    // 试图创建目录;
     if (::mkdir(dirname.c_str(), 0755) != 0) {
       return PosixError(dirname, errno);
     }
@@ -919,6 +913,7 @@ void EnvPosixTestHelper::SetReadOnlyMMapLimit(int limit) {
 }
 
 Env* Env::Default() {
+  // std::atomic<bool>
   static PosixDefaultEnv env_container;
   return env_container.env();
 }

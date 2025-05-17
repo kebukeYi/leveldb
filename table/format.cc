@@ -77,6 +77,7 @@ Status ReadBlock(RandomAccessFile* file, const ReadOptions& options,
   size_t n = static_cast<size_t>(handle.size());
   char* buf = new char[n + kBlockTrailerSize];
   Slice contents;
+  //  根据handle指定的偏移和大小，读取block内容，type和crc32值，其中常量kBlockTrailerSize=5= 1byte的type和4bytes的crc32
   Status s = file->Read(handle.offset(), n + kBlockTrailerSize, &contents, buf);
   if (!s.ok()) {
     delete[] buf;
@@ -89,6 +90,7 @@ Status ReadBlock(RandomAccessFile* file, const ReadOptions& options,
 
   // Check the crc of the type and the block contents
   const char* data = contents.data();  // Pointer to where Read put the data
+  // 如果option要校验CRC32，则计算content + type的CRC32并校验
   if (options.verify_checksums) {
     const uint32_t crc = crc32c::Unmask(DecodeFixed32(data + n + 1));
     const uint32_t actual = crc32c::Value(data, n + 1);
@@ -105,7 +107,7 @@ Status ReadBlock(RandomAccessFile* file, const ReadOptions& options,
         // File implementation gave us pointer to some other data.
         // Use it directly under the assumption that it will be live
         // while the file is open.
-        delete[] buf;
+        delete[] buf; // 文件自己管理，cacheable等标记设置为false
         result->data = Slice(data, n);
         result->heap_allocated = false;
         result->cachable = false;  // Do not double-cache
@@ -114,10 +116,10 @@ Status ReadBlock(RandomAccessFile* file, const ReadOptions& options,
         result->heap_allocated = true;
         result->cachable = true;
       }
-
       // Ok
       break;
     case kSnappyCompression: {
+      // 最后根据type指定的存储类型，如果是非压缩的，则直接取数据赋给result，否则先解压，把解压结果赋给result，目前支持的是snappy压缩。
       size_t ulength = 0;
       if (!port::Snappy_GetUncompressedLength(data, n, &ulength)) {
         delete[] buf;

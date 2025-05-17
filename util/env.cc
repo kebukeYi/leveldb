@@ -68,31 +68,32 @@ static Status DoWriteStringToFile(Env* env, const Slice& data,
   return s;
 }
 
-Status WriteStringToFile(Env* env, const Slice& data,
-                         const std::string& fname) {
+Status WriteStringToFile(Env* env, const Slice& data,const std::string& fname) {
   return DoWriteStringToFile(env, data, fname, false);
 }
 
-Status WriteStringToFileSync(Env* env, const Slice& data,
-                             const std::string& fname) {
+Status WriteStringToFileSync(Env* env, const Slice& data,const std::string& fname) {
   return DoWriteStringToFile(env, data, fname, true);
 }
 
 Status ReadFileToString(Env* env, const std::string& fname, std::string* data) {
   data->clear();
   SequentialFile* file;
+  //
   Status s = env->NewSequentialFile(fname, &file);
   if (!s.ok()) {
     return s;
   }
   static const int kBufferSize = 8192;
-  char* space = new char[kBufferSize];
+  char* space = new char[kBufferSize]; // 8KB
   while (true) {
     Slice fragment;
+    //
     s = file->Read(kBufferSize, &fragment, space);
     if (!s.ok()) {
       break;
     }
+    //
     data->append(fragment.data(), fragment.size());
     if (fragment.empty()) {
       break;
